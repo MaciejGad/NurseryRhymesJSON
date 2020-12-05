@@ -2,54 +2,45 @@ import Models
 import Foundation
 
 let fileManger = FileManager.default
-let rhymeDir = URL(fileURLWithPath: "rhymes")
+let rhymesDir = URL(fileURLWithPath: "rhymes")
+let booksDir = URL(fileURLWithPath: "books")
+
 
 do {
-    let rhymeFilesURLs = try fileManger.contentsOfDirectory(at: rhymeDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles).sorted(by: { (a, b) -> Bool in
-        a.absoluteString < b.absoluteString
-    })
-    print("Found \(rhymeFilesURLs.count) files:")
-    let fileNames = rhymeFilesURLs.map { $0.lastPathComponent }.joined(separator: "\n")
-    print(fileNames)
+    //list rhymes
+    let rhymeFilesURLs = try fileManger.listFiles(at: rhymesDir)
+    print("Found \(rhymeFilesURLs.count) rhymes:")
+    let filesNames = rhymeFilesURLs.filesNames().joined(separator: "\n")
+    print(filesNames)
     
-    var rhymes: [Rhyme] = []
-    for fileURL in rhymeFilesURLs {
-        let fileLines = try String(contentsOf: fileURL).components(separatedBy: "\n")
-        let rhymeId = fileURL.deletingPathExtension().lastPathComponent
-        let title = fileLines[safe: 0] ?? ""
-        var author = fileLines[safe: 1]
-        if author != nil, author?.count == 0 {
-            author = nil
-        }
-        let image = fileLines[2]
-        let imageURL = URL(string: "https://maciejgad.github.io/NurseryRhymesJSON/images/\(image)")
-        var text = ""
-        for index in 3..<fileLines.count {
-            guard let line = fileLines[safe: index] else {
-                break
-            }
-            text.append(line)
-            text.append("\n")
-        }
-        text.removeLast() //remove last new line
-        let rhyme = Rhyme(id: rhymeId, title: title, author: author, text: text, image: imageURL)
-        rhymes.append(rhyme)
-    }
-    let list = List(results: rhymes.map { $0.toListItem() })
-    let jsonEncoder = JSONEncoder()
-    for rhyme in rhymes {
-        do {
-            let data = try jsonEncoder.encode(rhyme)
-            let outURL = URL(fileURLWithPath: "docs/data/\(rhyme.id).json")
-            try data.write(to: outURL)
-        } catch  {
-            print("\(error)", to:&standardError)
-        }
-    }
-    let data = try jsonEncoder.encode(list)
-    let outURL = URL(fileURLWithPath: "docs/data/list.json")
-    try data.write(to: outURL)
-    print(list)
+    //load rhymes
+    let rhymes: [Rhyme] = try .loadList(from: rhymeFilesURLs)
+    let list = List(results: rhymes.toListItems())
+    
+    //list books
+    let booksFilesURLs = try fileManger.listFiles(at: booksDir)
+    print("Found \(booksFilesURLs.count) books:")
+    let bookFilesNames = booksFilesURLs.filesNames().joined(separator: "\n")
+    print(bookFilesNames)
+    
+    //load books
+    let books: [Book] = try .loadList(from: booksFilesURLs)
+    
+    //load book list for rhyme
+    let bookListsForRhymeURL = URL(fileURLWithPath: "bookListsForRhyme.txt")
+    let bookList: [BookListForRhyme] = try .from(file: bookListsForRhymeURL, books: books)
+    
+    //save all
+    let writer = Writer()
+    
+    try writer.save(rhymes, filenames: { $0.id })
+    try writer.save(list, filename: "list")
+    try writer.save(bookList, filenames: { "books/\($0.rhymeId)" })
+    
+    //print summary
+    print(list.results.map { $0.title }.joined(separator: ", "))
+    print(books.map { $0.title }.joined(separator: ", "))
+    
 } catch {
     print("\(error)", to:&standardError)
     exit(EXIT_FAILURE)
